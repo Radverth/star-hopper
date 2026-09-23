@@ -89,7 +89,7 @@ func _process(delta: float) -> void:
 	_apply_shake(delta)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed(&"flap"):
+	if not _is_tap(event):
 		return
 	match state:
 		State.READY:
@@ -99,6 +99,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		State.DEAD:
 			if _restart_ready:
 				_reset_run()
+
+# InputEventScreenTouch does not take part in action matching, so a mapped
+# touch event never satisfies is_action_pressed() and every tap on a phone
+# would be ignored. Touch is therefore checked directly, while keyboard and
+# mouse still go through the "flap" action.
+func _is_tap(event: InputEvent) -> bool:
+	var touch := event as InputEventScreenTouch
+	if touch != null:
+		return touch.pressed
+	return event.is_action_pressed(&"flap")
 
 # --- run lifecycle ---
 

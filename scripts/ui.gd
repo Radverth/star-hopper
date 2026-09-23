@@ -54,6 +54,11 @@ func _ready() -> void:
 	root.add_child(_build_ready())
 	root.add_child(_build_game_over())
 
+	# Nothing here is interactive - the whole screen is the tap target. Controls
+	# default to MOUSE_FILTER_STOP and containers would otherwise swallow taps
+	# before they ever reach the game's _unhandled_input.
+	_ignore_input(root)
+
 # --- public API ---
 
 func set_score(value: int) -> void:
@@ -202,6 +207,13 @@ func _build_game_over() -> Control:
 	return _over_group
 
 # --- helpers ---
+
+func _ignore_input(node: Node) -> void:
+	var control := node as Control
+	if control != null:
+		control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for child in node.get_children():
+		_ignore_input(child)
 
 func _centered() -> Control:
 	var holder := CenterContainer.new()

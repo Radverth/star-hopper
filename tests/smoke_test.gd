@@ -7,6 +7,8 @@ extends SceneTree
 const MAX_FRAMES := 5400
 const DIVE_AT := 2400 # stop flapping here to force a crash
 const TEARDOWN_FRAMES := 5
+# Sits over the "GET READY" prompt and the game over panel on purpose.
+const TAP_AT := Vector2(270, 300)
 
 var _game: Node2D
 var _player: Area2D
@@ -88,11 +90,17 @@ func _target_y() -> float:
 		return ahead.position.y + (ahead.get_node("Star") as Area2D).position.y
 	return ahead.gap_center
 
+# Deliberately a real InputEventScreenTouch rather than an InputEventAction:
+# actions bypass both action-matching and the GUI, which is exactly where
+# touch input breaks. Tapping over the on-screen prompt also proves the UI
+# is not swallowing the event before the game sees it.
 func _tap() -> void:
-	var event := InputEventAction.new()
-	event.action = &"flap"
-	event.pressed = true
-	Input.parse_input_event(event)
+	for pressed in [true, false]:
+		var touch := InputEventScreenTouch.new()
+		touch.index = 0
+		touch.pressed = pressed
+		touch.position = TAP_AT
+		Input.parse_input_event(touch)
 
 func _report() -> bool:
 	var save := root.get_node_or_null("/root/Save")
