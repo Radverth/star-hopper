@@ -1,0 +1,71 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/obstacle.gd" id="1_obstacle"]
+[ext_resource type="Texture2D" path="res://assets/sprites/rock_top.png" id="2_top"]
+[ext_resource type="Texture2D" path="res://assets/sprites/rock_bottom.png" id="3_bottom"]
+[ext_resource type="Texture2D" path="res://assets/sprites/star_gold.png" id="4_star"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_gate"]
+size = Vector2(12, 2600)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_star"]
+radius = 31.0
+
+[node name="Obstacle" type="Node2D"]
+script = ExtResource("1_obstacle")
+
+[node name="TopBody" type="Sprite2D" parent="."]
+texture_filter = 1
+centered = false
+texture = ExtResource("2_top")
+region_enabled = true
+region_rect = Rect2(0, 2, 108, 2)
+
+[node name="TopTip" type="Sprite2D" parent="."]
+centered = false
+texture = ExtResource("2_top")
+region_enabled = true
+region_rect = Rect2(0, 2, 108, 237)
+
+[node name="BottomBody" type="Sprite2D" parent="."]
+texture_filter = 1
+centered = false
+texture = ExtResource("3_bottom")
+region_enabled = true
+region_rect = Rect2(0, 233, 108, 2)
+
+[node name="BottomTip" type="Sprite2D" parent="."]
+centered = false
+texture = ExtResource("3_bottom")
+region_enabled = true
+region_rect = Rect2(0, 0, 108, 235)
+
+[node name="TopArea" type="Area2D" parent="." groups=["rock"]]
+collision_layer = 2
+collision_mask = 0
+monitoring = false
+
+[node name="BottomArea" type="Area2D" parent="." groups=["rock"]]
+collision_layer = 2
+collision_mask = 0
+monitoring = false
+
+[node name="ScoreZone" type="Area2D" parent="." groups=["scorezone"]]
+position = Vector2(62, 600)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+
+[node name="Shape" type="CollisionShape2D" parent="ScoreZone"]
+shape = SubResource("RectangleShape2D_gate")
+
+[node name="Star" type="Area2D" parent="." groups=["star"]]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+
+[node name="Sprite" type="Sprite2D" parent="Star"]
+texture = ExtResource("4_star")
+
+[node name="Shape" type="CollisionShape2D" parent="Star"]
+shape = SubResource("CircleShape2D_star")

@@ -1,0 +1,154 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.3
+  GODOT_RELEASE: stable
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Godot editor and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}
+
+      - name: Install Godot and export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}"
+          TAG="${GODOT_VERSION}-${GODOT_RELEASE}"
+
+          mkdir -p ~/godot-bin
+          curl -fsSL -o /tmp/godot.zip "${BASE}/Godot_v${TAG}_linux.x86_64.zip"
+          unzip -q -o /tmp/godot.zip -d ~/godot-bin
+          mv ~/godot-bin/Godot_v${TAG}_linux.x86_64 ~/godot-bin/godot
+          chmod +x ~/godot-bin/godot
+
+          curl -fsSL -o /tmp/templates.tpz "${BASE}/Godot_v${TAG}_export_templates.tpz"
+          unzip -q -o /tmp/templates.tpz -d /tmp/templates
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          mv /tmp/templates/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+
+      - name: Add Godot to PATH
+        run: echo "$HOME/godot-bin" >> "$GITHUB_PATH"
+
+      - name: Install Android build-tools
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "build-tools;34.0.0" "platforms;android-34" > /dev/null
+          echo "Using SDK at $ANDROID_HOME"
+
+      - name: Point Godot at the Android SDK
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-${GODOT_VERSION}.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "${ANDROID_HOME}"
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          export/android/force_system_user = false
+          export/android/shutdown_adb_on_exit = true
+          EOF
+
+      - name: Prepare signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "Signing with the release keystore from repository secrets."
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+            KS_USER="$KEYSTORE_USER"
+            KS_PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret set - signing with a throwaway key generated for this run. The APK installs fine for testing, but Google Play requires a stable key."
+            KS_USER="starhopper"
+            KS_PASS="starhopper"
+            keytool -genkeypair -v -keystore "$KS" -alias "$KS_USER" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" \
+              -dname "CN=Star Hopper, OU=Games, O=Star Hopper, L=Unknown, ST=Unknown, C=GB" \
+              > /dev/null 2>&1
+          fi
+          {
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$KS"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$KS_USER"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$KS_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Stamp version code
+        run: |
+          set -euo pipefail
+          sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|" export_presets.cfg
+          grep -E "^version/(code|name)=" export_presets.cfg
+
+      - name: Import assets
+        run: |
+          set -euo pipefail
+          # First pass populates .import files; the second resolves autoloads
+          # that preload those freshly imported resources.
+          godot --headless --path . --import || true
+          godot --headless --path . --import
+
+      - name: Headless gameplay smoke test
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script tests/smoke_test.gd 2>&1 | tee smoke.log
+          # Godot emits harmless teardown noise after the report when a custom
+          # main loop exits, so only scrutinise output from the run itself.
+          sed '/--- smoke test ---/,$d' smoke.log > gameplay.log
+          if grep -E "ERROR|SCRIPT ERROR" gameplay.log; then
+            echo "::error::Errors were reported during the gameplay smoke test"
+            exit 1
+          fi
+          grep -q "RESULT: PASS" smoke.log
+
+      - name: Export release APK
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          godot --headless --path . --export-release "Android" build/star-hopper.apk
+          ls -lh build/star-hopper.apk
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+          "$APKSIGNER" verify --print-certs build/star-hopper.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-hopper-apk-${{ github.sha }}
+          path: build/star-hopper.apk
+          if-no-files-found: error

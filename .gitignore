@@ -1,0 +1,17 @@
+# Godot 4 import cache and generated data
+.godot/
+/android/
+
+# Build output
+build/
+*.apk
+*.aab
+*.idsig
+
+# Signing material must never be committed
+*.keystore
+*.jks
+
+# OS noise
+.DS_Store
+Thumbs.db
