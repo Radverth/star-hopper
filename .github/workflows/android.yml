@@ -175,3 +175,4 @@ jobs:
           name: star-hopper-apk-${{ github.sha }}
           path: build/star-hopper.apk
           if-no-files-found: error
+          retention-days: 3
